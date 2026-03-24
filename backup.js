@@ -86,8 +86,36 @@ function downloadJson(data) {
   });
 }
 
+function downloadJsonWithName(data, filename) {
+  const jsonString = JSON.stringify(data, null, 2);
+  const jsonBlob = new Blob([jsonString], { type: 'application/json' });
+  const downloadLink = document.createElement('a');
+  downloadLink.href = URL.createObjectURL(jsonBlob);
+  downloadLink.download = filename;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(downloadLink.href);
+      resolve();
+    }, 150);
+  });
+}
+
+function saveCheckpoint(checkpoint) {
+  localStorage.setItem('gpt_backup_checkpoint_v1', JSON.stringify(checkpoint));
+}
+
+function logConfig(startOffset, stopOffset) {
+  console.log('GPT-BACKUP::CONFIG::START_OFFSET::' + startOffset);
+  console.log('GPT-BACKUP::CONFIG::STOP_OFFSET::' + stopOffset);
+  console.log('GPT-BACKUP::CONFIG::HOST::chatgpt.com');
+}
+
 async function loadToken() {
-  const res = await fetch('https://chat.openai.com/api/auth/session');
+  const res = await fetch('https://chatgpt.com/api/auth/session');
 
   if (!res.ok) {
     throw new Error('failed to fetch token');
@@ -98,8 +126,9 @@ async function loadToken() {
 }
 
 async function getConversationIds(token, offset = 0) {
+  console.log(`GPT-BACKUP::IDS::REQUEST::OFFSET::${offset}::LIMIT::20`);
   const res = await fetch(
-    `https://chat.openai.com/backend-api/conversations?offset=${offset}&limit=20`,
+    `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=20`,
     {
       headers: {
         authorization: `Bearer ${token}`,
@@ -112,8 +141,17 @@ async function getConversationIds(token, offset = 0) {
   }
 
   const json = await res.json();
+  const items = Array.isArray(json.items) ? json.items : [];
+  const firstId = items[0] && items[0].id ? items[0].id : 'none';
+  const lastId =
+    items.length > 0 && items[items.length - 1].id
+      ? items[items.length - 1].id
+      : 'none';
+  console.log(
+    `GPT-BACKUP::IDS::RESPONSE::OFFSET::${offset}::ITEMS::${items.length}::TOTAL::${json.total}::FIRST_ID::${firstId}::LAST_ID::${lastId}`,
+  );
   return {
-    items: json.items.map((item) => ({ ...item, offset })),
+    items: items.map((item) => ({ ...item, offset })),
     total: json.total,
   };
 }
@@ -122,8 +160,11 @@ async function fetchConversation(token, id, maxAttempts = 3, attempt = 1) {
   const INITIAL_BACKOFF = 10000;
   const BACKOFF_MULTIPLIER = 2;
   try {
+    console.log(
+      `GPT-BACKUP::CONVO::REQUEST::ID::${id}::ATTEMPT::${attempt}/${maxAttempts}`,
+    );
     const res = await fetch(
-      `https://chat.openai.com/backend-api/conversation/${id}`,
+      `https://chatgpt.com/backend-api/conversation/${id}`,
       {
         headers: {
           authorization: `Bearer ${token}`,
@@ -132,9 +173,10 @@ async function fetchConversation(token, id, maxAttempts = 3, attempt = 1) {
     );
     
     if (!res.ok) {
-      throw new Error('Unsuccessful response');
+      throw new Error(`Unsuccessful response (${res.status})`);
     }
 
+    console.log(`GPT-BACKUP::CONVO::SUCCESS::ID::${id}::STATUS::${res.status}`);
     return res.json();
 
   } catch (error) {
@@ -150,39 +192,101 @@ async function fetchConversation(token, id, maxAttempts = 3, attempt = 1) {
 }
 
 async function getAllConversations(startOffset, stopOffset) {
+  logConfig(startOffset, stopOffset);
   const token = await loadToken();
-
-  // get first batch
-  const { total, items: allItems } = await getConversationIds(
-    token,
-    startOffset,
+  console.log(
+    `GPT-BACKUP::AUTH::TOKEN::LOADED::PREFIX::${String(token).slice(0, 10)}...`,
   );
 
-  // generate offsets
-  const offsets = generateOffsets(startOffset, total);
+  let reportedTotal = 0;
+  let reportedTotalFirstPage = 0;
+  const allItems = [];
+  const seenIds = new Set();
+  const pageLimit = 20;
+  const maxPages = 1000;
+  let page = 0;
+  let currentOffset = startOffset;
+  let lastOffset = startOffset;
 
-  // don't spam api
-  // fetch all offsets
-  for (const offset of offsets) {
-    // stop at offset
-    if (offset === stopOffset) break;
+  // Keep paginating until the API returns no more items (or duplicates only),
+  // instead of trusting the reported total which may be capped.
+  while (page < maxPages) {
+    if (stopOffset !== -1 && currentOffset >= stopOffset) {
+      console.log(
+        `GPT-BACKUP::IDS::STOP_REACHED::OFFSET::${currentOffset}::STOP_OFFSET::${stopOffset}`,
+      );
+      break;
+    }
 
+    const { total, items } = await getConversationIds(token, currentOffset);
+    if (page === 0) {
+      reportedTotalFirstPage = total;
+      console.log(
+        `GPT-BACKUP::IDS::FIRST_BATCH::OFFSET::${currentOffset}::COUNT::${items.length}::TOTAL::${total}`,
+      );
+    }
+    reportedTotal = total;
+    page += 1;
+
+    if (!items.length) {
+      console.log(
+        `GPT-BACKUP::IDS::PAGINATION_END::REASON::EMPTY_PAGE::OFFSET::${currentOffset}::PAGE::${page}`,
+      );
+      break;
+    }
+
+    let newItemsInPage = 0;
+    for (const item of items) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        allItems.push(item);
+        newItemsInPage += 1;
+      }
+    }
+
+    console.log(
+      `GPT-BACKUP::IDS::PAGE::${page}::OFFSET::${currentOffset}::REPORTED_TOTAL::${total}::ITEMS::${items.length}::NEW_ITEMS::${newItemsInPage}::AGGREGATE_UNIQUE::${allItems.length}`,
+    );
+
+    if (newItemsInPage === 0) {
+      console.log(
+        `GPT-BACKUP::IDS::PAGINATION_END::REASON::NO_NEW_IDS::OFFSET::${currentOffset}::PAGE::${page}`,
+      );
+      break;
+    }
+
+    lastOffset = currentOffset;
+    if (items.length < pageLimit) {
+      console.log(
+        `GPT-BACKUP::IDS::PAGINATION_END::REASON::SHORT_PAGE::OFFSET::${currentOffset}::ITEMS::${items.length}`,
+      );
+      break;
+    }
+
+    currentOffset += pageLimit;
     await sleep();
-
-    const { items } = await getConversationIds(token, offset);
-    allItems.push.apply(allItems, items);
   }
 
-  const lastOffset =
-    stopOffset === -1 ? offsets[offsets.length - 1] : stopOffset;
+  if (page === maxPages) {
+    console.warn(`GPT-BACKUP::IDS::PAGINATION_END::REASON::MAX_PAGES::${maxPages}`);
+  }
+
+  console.log(
+    `GPT-BACKUP::IDS::SUMMARY::REPORTED_TOTAL_FIRST_PAGE::${reportedTotalFirstPage}::REPORTED_TOTAL_LAST_PAGE::${reportedTotal}::UNIQUE_IDS::${allItems.length}`,
+  );
 
   const allConversations = [];
-  const requested = getRequestCount(total, startOffset, stopOffset);
+  const failedConversations = [];
+  const requested =
+    stopOffset === -1
+      ? allItems.length
+      : getRequestCount(reportedTotalFirstPage, startOffset, stopOffset);
 
   console.log(`GPT-BACKUP::STARTING::TOTAL-OFFSETS::${lastOffset}`);
   console.log(`GPT-BACKUP::STARTING::REQUESTED-MESSAGES::${requested}`);
-  console.log(`GPT-BACKUP::STARTING::TOTAL-MESSAGES::${total}`);
-  for (const item of allItems) {
+  console.log(`GPT-BACKUP::STARTING::TOTAL-MESSAGES::${reportedTotal}`);
+  for (let index = 0; index < allItems.length; index++) {
+    const item = allItems[index];
     // 60 conversations/min
     await sleep(1000);
 
@@ -191,19 +295,79 @@ async function getAllConversations(startOffset, stopOffset) {
       logProgress(requested, allConversations.length, item.offset);
     }
 
-    const rawConversation = await fetchConversation(token, item.id);
-    const conversation = parseConversation(rawConversation);
-    allConversations.push(conversation);
+    try {
+      const rawConversation = await fetchConversation(token, item.id);
+      const conversation = parseConversation(rawConversation);
+      allConversations.push(conversation);
+      if ((index + 1) % 10 === 0 || index === allItems.length - 1) {
+        console.log(
+          `GPT-BACKUP::CONVO::COUNTS::PROCESSED::${index + 1}/${allItems.length}::SUCCESS::${allConversations.length}::FAILED::${failedConversations.length}`,
+        );
+      }
+    } catch (error) {
+      failedConversations.push({
+        id: item.id,
+        offset: item.offset,
+        error: String(error && error.message ? error.message : error),
+      });
+      console.error(
+        `GPT-BACKUP::FAILED::ID::${item.id}::OFFSET::${item.offset}`,
+        error,
+      );
+    }
+
+    if ((index + 1) % 20 === 0 || index === allItems.length - 1) {
+      saveCheckpoint({
+        saved_at: new Date().toISOString(),
+        start_offset: startOffset,
+        stop_offset: stopOffset,
+        processed: index + 1,
+        total_listed: allItems.length,
+        conversations: allConversations,
+        failed: failedConversations,
+      });
+      console.log(
+        `GPT-BACKUP::CHECKPOINT::PROCESSED::${index + 1}::SUCCESS::${allConversations.length}::FAILED::${failedConversations.length}`,
+      );
+    }
   }
 
   logProgress(requested, allConversations.length, lastOffset);
 
-  return allConversations;
+  return {
+    conversations: allConversations,
+    failedConversations,
+    requested,
+    listed: allItems.length,
+  };
 }
 
 async function main(startOffset, stopOffset) {
-  const allConversations = await getAllConversations(startOffset, stopOffset);
-  await downloadJson(allConversations);
+  const {
+    conversations,
+    failedConversations,
+    requested,
+    listed,
+  } = await getAllConversations(startOffset, stopOffset);
+  await downloadJson(conversations);
+
+  if (failedConversations.length > 0) {
+    await downloadJsonWithName(
+      {
+        generated_at: new Date().toISOString(),
+        requested,
+        listed,
+        success_count: conversations.length,
+        failed_count: failedConversations.length,
+        failed: failedConversations,
+      },
+      `gpt-backup-failed-${getDateFormat(new Date())}.json`,
+    );
+  }
+
+  console.log(
+    `GPT-BACKUP::SUMMARY::REQUESTED::${requested}::LISTED::${listed}::SUCCESS::${conversations.length}::FAILED::${failedConversations.length}`,
+  );
 }
 
 // customize if you need to continue from a previous run
