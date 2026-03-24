@@ -2,11 +2,13 @@
 
 A single client side script to backup your entire conversation history on [chat.openai.com](https://chat.openai.com). The output is a single JSON file of your history.
 
-## You can now preview your backups by opening `index.html` locally
+## Preview backups with `index.html`
 
 1. Clone the repo: `git clone https://github.com/abacaj/chatgpt-backup.git`
-2. Open `index.html` in your browser
-3. Load the file from the top left
+2. Open `index.html` in your browser (or serve folder with `python3 -m http.server 8000`)
+3. Open `http://localhost:8000` in your browser
+4. The viewer attempts to auto-load the newest `gpt-backup-*.json` in the folder when possible
+5. If auto-load fails, use the file picker in the top left
 
 ![Preview](assets/preview.png)
 
@@ -17,15 +19,28 @@ A single client side script to backup your entire conversation history on [chat.
 3. Open chrome console or firefox console (F12 on keyboard)
 4. Click on "Console" tab
 5. Copy the entire script content found in file backup.js and paste into the console input field at the bottom
-6. Press enter, script starts and will log progress to console
+6. Press enter, script starts and logs detailed progress to the console
    ![Progress](assets/progress.png)
-7. If it fails at any point you can check the console logs to see the offset it failed at
+7. If it fails at any point, use the logs to see page/offset/request details and any failed conversation IDs
 8. You can run from any offset by adjusting the script offsets found at the bottom of the script:
 
 ```js
 const START_OFFSET = 0;
 const STOP_OFFSET = -1;
 ```
+
+## What's new in this version
+
+- Pagination now continues by requesting pages until the API returns no more items (instead of trusting a possibly capped `total` from the first page)
+- Per-conversation fetch errors no longer abort the whole run
+- Failed conversation IDs are collected and exported to `gpt-backup-failed-<timestamp>.json`
+- Checkpoints are saved during execution in `localStorage` under key `gpt_backup_checkpoint_v1`
+- Added verbose logs for:
+  - ID page requests/responses
+  - aggregate/unique counts
+  - per-conversation fetch attempts
+  - checkpoint/success/failure counters
+  - final summary
 
 ## How it works
 
@@ -60,6 +75,19 @@ Some of the key benefits:
 - Keep your browser tab open, you don't need it to be focused for this to finish
 - Chrome **may** prompt you to download the file once it's completed
 - Tested on firefox, requires you to type `allow pasting` before you can paste the script
+- A run can produce two files:
+  - `gpt-backup-<timestamp>.json` (successful conversations)
+  - `gpt-backup-failed-<timestamp>.json` (only if some conversations failed)
+
+## Troubleshooting
+
+- If output seems truncated, check:
+  - `GPT-BACKUP::IDS::SUMMARY::...`
+  - `GPT-BACKUP::SUMMARY::...`
+- If there are failures, inspect the downloaded `gpt-backup-failed-*.json` for IDs and offsets
+- If `index.html` does not auto-load a backup:
+  - open the JSON manually with the file picker, or
+  - run a local server (`python3 -m http.server 8000`) and open `http://localhost:8000`
 
 ## Contributors
 

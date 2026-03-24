@@ -1,227 +1,331 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Load JSON File</title>
-    <link
-      href="https://unpkg.com/primevue/resources/themes/lara-light-indigo/theme.css"
-      rel="stylesheet"
-    />
-    <link
-      href="https://unpkg.com/primevue/resources/primevue.min.css"
-      rel="stylesheet"
-    />
-    <link href="https://unpkg.com/primeicons/primeicons.css" rel="stylesheet" />
-
-    <script src="https://unpkg.com/vue@next"></script>
-    <script src="https://unpkg.com/primevue/api/api.min.js"></script>
-    <script src="https://unpkg.com/primevue/config/config.min.js"></script>
-    <script src="https://unpkg.com/primevue/utils/utils.min.js"></script>
-    <script src="https://unpkg.com/primevue/virtualscroller/virtualscroller.min.js"></script>
-
-    <script src="https://unpkg.com/primevue/ripple/ripple.min.js"></script>
-    <script src="https://unpkg.com/primevue/columngroup/columngroup.min.js"></script>
-    <script src="https://unpkg.com/primevue/paginator/paginator.min.js"></script>
-    <script src="https://unpkg.com/primevue/column/column.min.js"></script>
-    <script src="https://unpkg.com/primevue/datatable/datatable.min.js"></script>
-    <script src="https://unpkg.com/primevue/inputtext/inputtext.min.js"></script>
-    <script src="https://unpkg.com/primevue/button/button.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chat Backup Viewer</title>
     <style>
-      .column-td {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+      :root {
+        color-scheme: light dark;
       }
 
-      .column-td .button-container {
-        display: flex;
-        justify-content: flex-end;
+      * {
+        box-sizing: border-box;
       }
 
-      .column-td button {
-        margin-left: 5px;
-      }
-
-      body,
-      html {
-        height: 100%;
+      body {
         margin: 0;
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+        background: #0f1115;
+        color: #e6e8ee;
       }
 
-      .app-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
+      .app {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        height: 100vh;
       }
 
-      .content-container {
-        display: flex;
-        width: 100%;
-        max-width: 1400px;
-        height: 100%;
-      }
-
-      .table-container {
-        flex: 1;
-        min-width: 0;
-        height: 100%;
+      .sidebar {
+        border-right: 1px solid #2a2f3a;
         overflow-y: auto;
+        padding: 12px;
+        background: #151923;
       }
 
-      .preview {
-        flex: 1;
+      .header {
         position: sticky;
         top: 0;
+        background: #151923;
+        padding-bottom: 12px;
+        z-index: 2;
+      }
+
+      .header h1 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+      }
+
+      .status {
+        margin: 8px 0 0;
+        font-size: 12px;
+        color: #a6adbb;
+      }
+
+      .chat-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .chat-list button {
+        width: 100%;
+        border: 1px solid #303746;
+        background: #1b2130;
+        color: #e6e8ee;
+        text-align: left;
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+      }
+
+      .chat-list button.active {
+        border-color: #7aa2ff;
+        background: #1a2a4f;
+      }
+
+      .chat-title {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .chat-meta {
+        margin-top: 4px;
+        font-size: 11px;
+        color: #9ca4b3;
+      }
+
+      .content {
         overflow-y: auto;
-        border: 1px solid #ccc;
-        padding: 1rem;
-        height: 100%;
-        /* word-wrap: break-word; Add this line */
-        /* overflow-wrap: break-word; */
+        padding: 18px;
       }
 
-      .preview pre {
-        white-space: pre-wrap;
-        /* Enable wrapping for <pre> */
-        word-wrap: break-word;
-        /* Enable word wrapping for <pre> */
+      .empty {
+        color: #a6adbb;
       }
 
-      .preview code {
+      .msg {
+        border: 1px solid #2d3545;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: #171c27;
+      }
+
+      .msg.user {
+        border-color: #335699;
+        background: #132340;
+      }
+
+      .msg.assistant {
+        border-color: #2f5e47;
+        background: #122b21;
+      }
+
+      .role {
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #9ca4b3;
+        margin-bottom: 6px;
+      }
+
+      .text {
         white-space: pre-wrap;
-        /* Enable wrapping for <code> */
-        word-wrap: break-word;
-        /* Enable word wrapping for <code> */
+        line-height: 1.5;
+        font-size: 14px;
+        word-break: break-word;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+      }
+
+      .toolbar input[type='file'] {
+        width: 100%;
       }
     </style>
   </head>
-
   <body>
-    <div id="app" class="app-container"></div>
-
-    <template id="template">
-      <div class="content-container">
-        <div class="table-container">
-          <input type="file" id="fileInput" @change="loadJSON" accept=".json" />
-          <p-datatable :value="output">
-            <p-column field="title" header="Title" class="column-td">
-              <template #body="slotProps">
-                <span>{{ slotProps.data.title || 'Untitled' }}</span>
-                <div class="button-container">
-                  <p-button
-                    icon="pi pi-eye"
-                    size="small"
-                    @click="showPreview(slotProps.data)"
-                  ></p-button>
-                  <p-button
-                    icon="pi pi-download"
-                    size="small"
-                    @click="downloadChat(slotProps.data)"
-                  ></p-button>
-                </div>
-              </template>
-            </p-column>
-          </p-datatable>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="header">
+          <h1>Chat Backup Viewer</h1>
+          <div class="toolbar">
+            <input id="fileInput" type="file" accept=".json" />
+          </div>
+          <p id="status" class="status">Loading JSON from this folder...</p>
         </div>
-        <div class="preview" v-if="selectedChat" v-html="preview"></div>
-      </div>
-    </template>
+        <ul id="chatList" class="chat-list"></ul>
+      </aside>
+      <main id="content" class="content"></main>
+    </div>
+
     <script>
-      const app = Vue.createApp({
-        data() {
-          return {
-            output: null,
-            preview: '',
-            selectedChat: false,
-            previousChat: null,
-          };
-        },
-        methods: {
-          loadJSON() {
-            /**
-             * @typedef {Object} Message - A chat message object.
-             * @property {string} role - The role of the message sender (e.g. "user" or "assistant").
-             * @property {string[]} content - The content of the message as an array of strings.
-             * @property {number} create_time - The timestamp of when the message was created.
-             * @property {string} [model] - The name of the NLP model used to generate the message.
-             */
-            /**
-             * @typedef {Object} Chat - A chat conversation object.
-             * @property {Message[]} messages - An array of messages in the chat.
-             * @property {number} create_time - The timestamp of when the chat was created.
-             * @property {string} [title] - The title of the chat (optional).
-             */
+      const DEFAULT_JSON_FILE = 'gpt-backup-2026-03-24-11-59-22.json';
+      const state = {
+        chats: [],
+        selectedIndex: -1,
+      };
 
-            /**
-             * @typedef {Chat[]} Backup - An array of chat objects representing a backup of a chat log.
-             */
-            const input = document.getElementById('fileInput');
-            const file = input.files[0];
-            const reader = new FileReader();
-            reader.readAsText(file);
-            reader.onload = () => {
-              const json = JSON.parse(reader.result);
-              this.output = json;
-              localStorage.setItem('json_data', JSON.stringify(json));
+      const statusEl = document.getElementById('status');
+      const fileInputEl = document.getElementById('fileInput');
+      const chatListEl = document.getElementById('chatList');
+      const contentEl = document.getElementById('content');
 
-              console.log(json);
-            };
-          },
-          jsonToMarkdown(json) {
-            let output = '';
-            const userIcon = '![User](assets/mdi-user.png)';
-            const assistantIcon =
-              '![Assistant](assets/tabler-brand-openai-1.png)';
-            for (const message of json.messages) {
-              if (message.role === 'user' || message.role === 'assistant') {
-                output += `${
-                  message.role === 'user' ? userIcon : assistantIcon
-                }\r\n\r\n${message.content[0]}\n\n---\n\n`;
-              }
+      function escapeHtml(text) {
+        return String(text)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#039;');
+      }
+
+      function messageText(content) {
+        if (!Array.isArray(content)) {
+          return '';
+        }
+        const parts = content
+          .map((item) => {
+            if (typeof item === 'string') {
+              return item;
             }
-            return output;
-          },
-          downloadChat(chat) {
-            const title = chat.title || 'Untitled';
-            const markdown = this.jsonToMarkdown(chat);
-            this.downloadMarkdown(title, markdown);
-          },
-          downloadMarkdown(title, markdown) {
-            const blob = new Blob([markdown], { type: 'text/markdown' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${title}.md`;
-            link.click();
-            URL.revokeObjectURL(url);
-          },
-          showPreview(chat) {
-            this.selectedChat =
-              !this.selectedChat || this.previousChat !== chat;
-            this.previousChat = chat;
-            const markdown = this.jsonToMarkdown(chat);
-            const outputElement = document.createElement('div');
-            outputElement.innerHTML = marked.parse(markdown);
-            this.preview = outputElement.innerHTML;
-          },
-        },
-        mounted() {
-          const savedJSON = localStorage.getItem('json_data');
-          if (savedJSON) {
-            this.output = JSON.parse(savedJSON);
+            if (
+              item &&
+              typeof item === 'object' &&
+              item.content_type === 'image_asset_pointer'
+            ) {
+              return '[Image]';
+            }
+            return '';
+          })
+          .filter(Boolean);
+        return parts.join('\n');
+      }
+
+      function renderChats() {
+        chatListEl.innerHTML = '';
+        state.chats.forEach((chat, index) => {
+          const li = document.createElement('li');
+          const btn = document.createElement('button');
+          if (index === state.selectedIndex) {
+            btn.classList.add('active');
           }
-        },
-        template: '#template',
-        components: {
-          'p-button': primevue.button,
-          'p-datatable': primevue.datatable,
-          'p-column': primevue.column,
-        },
+          const title = chat.title || `Untitled Chat ${index + 1}`;
+          const messageCount = Array.isArray(chat.messages) ? chat.messages.length : 0;
+          btn.innerHTML = `
+            <div class="chat-title">${escapeHtml(title)}</div>
+            <div class="chat-meta">${messageCount} messages</div>
+          `;
+          btn.addEventListener('click', () => {
+            state.selectedIndex = index;
+            renderChats();
+            renderSelectedChat();
+          });
+          li.appendChild(btn);
+          chatListEl.appendChild(li);
+        });
+      }
+
+      function renderSelectedChat() {
+        if (state.selectedIndex < 0 || state.selectedIndex >= state.chats.length) {
+          contentEl.innerHTML =
+            '<p class="empty">No chat selected. Pick one from the left.</p>';
+          return;
+        }
+
+        const chat = state.chats[state.selectedIndex];
+        const title = chat.title || `Untitled Chat ${state.selectedIndex + 1}`;
+        const messages = Array.isArray(chat.messages) ? chat.messages : [];
+
+        const body = messages
+          .filter((msg) => msg && (msg.role === 'user' || msg.role === 'assistant'))
+          .map((msg) => {
+            const role = msg.role || 'unknown';
+            const text = messageText(msg.content);
+            return `
+              <article class="msg ${escapeHtml(role)}">
+                <div class="role">${escapeHtml(role)}</div>
+                <div class="text">${escapeHtml(text || '[No text content]')}</div>
+              </article>
+            `;
+          })
+          .join('');
+
+        contentEl.innerHTML = `
+          <h2>${escapeHtml(title)}</h2>
+          ${body || '<p class="empty">No user/assistant messages in this chat.</p>'}
+        `;
+      }
+
+      function applyData(json, sourceLabel) {
+        if (!Array.isArray(json)) {
+          throw new Error('Expected top-level JSON array of chats.');
+        }
+        state.chats = json;
+        state.selectedIndex = json.length > 0 ? 0 : -1;
+        statusEl.textContent = `Loaded ${json.length} chats from ${sourceLabel}`;
+        renderChats();
+        renderSelectedChat();
+      }
+
+      async function discoverNewestBackupFile() {
+        try {
+          const response = await fetch('.', { cache: 'no-store' });
+          if (!response.ok) {
+            return null;
+          }
+          const html = await response.text();
+          const matches = Array.from(
+            html.matchAll(/href=["'](gpt-backup-[^"']+\.json)["']/g),
+          ).map((match) => match[1]);
+          if (matches.length === 0) {
+            return null;
+          }
+          matches.sort();
+          return matches[matches.length - 1];
+        } catch (error) {
+          return null;
+        }
+      }
+
+      async function loadDefaultFile() {
+        try {
+          const discoveredFile = await discoverNewestBackupFile();
+          const targetFile = discoveredFile || DEFAULT_JSON_FILE;
+          const response = await fetch(targetFile, { cache: 'no-store' });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+          const json = await response.json();
+          applyData(json, targetFile);
+        } catch (error) {
+          statusEl.textContent =
+            'Could not auto-load local file. Use the file picker to open your JSON backup.';
+          contentEl.innerHTML =
+            '<p class="empty">Auto-load failed. Choose your backup file using the picker on the left.</p>';
+          console.error(error);
+        }
+      }
+
+      fileInputEl.addEventListener('change', () => {
+        const file = fileInputEl.files && fileInputEl.files[0];
+        if (!file) {
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const json = JSON.parse(String(reader.result));
+            applyData(json, file.name);
+          } catch (error) {
+            statusEl.textContent = `Invalid JSON in ${file.name}`;
+            console.error(error);
+          }
+        };
+        reader.readAsText(file);
       });
-      app.directive('ripple', primevue.ripple);
-      app.mount('#app');
+
+      loadDefaultFile();
     </script>
   </body>
 </html>
