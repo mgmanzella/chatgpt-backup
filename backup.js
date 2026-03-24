@@ -105,7 +105,41 @@ function downloadJsonWithName(data, filename) {
 }
 
 function saveCheckpoint(checkpoint) {
-  localStorage.setItem('gpt_backup_checkpoint_v1', JSON.stringify(checkpoint));
+  const key = 'gpt_backup_checkpoint_v1';
+  try {
+    localStorage.setItem(key, JSON.stringify(checkpoint));
+  } catch (error) {
+    const fallbackCheckpoint = {
+      saved_at: checkpoint.saved_at,
+      start_offset: checkpoint.start_offset,
+      stop_offset: checkpoint.stop_offset,
+      processed: checkpoint.processed,
+      total_listed: checkpoint.total_listed,
+      success_count: Array.isArray(checkpoint.conversations)
+        ? checkpoint.conversations.length
+        : checkpoint.success_count || 0,
+      failed_count: Array.isArray(checkpoint.failed)
+        ? checkpoint.failed.length
+        : checkpoint.failed_count || 0,
+      last_failed: Array.isArray(checkpoint.failed)
+        ? checkpoint.failed.slice(-20)
+        : [],
+      note: 'lightweight checkpoint due to storage quota',
+    };
+
+    try {
+      localStorage.removeItem(key);
+      localStorage.setItem(key, JSON.stringify(fallbackCheckpoint));
+      console.warn(
+        'GPT-BACKUP::CHECKPOINT::LIGHTWEIGHT::REASON::STORAGE_QUOTA',
+      );
+    } catch (fallbackError) {
+      console.warn(
+        'GPT-BACKUP::CHECKPOINT::SKIPPED::REASON::STORAGE_QUOTA',
+        fallbackError,
+      );
+    }
+  }
 }
 
 function logConfig(startOffset, stopOffset) {
@@ -323,7 +357,7 @@ async function getAllConversations(startOffset, stopOffset) {
         stop_offset: stopOffset,
         processed: index + 1,
         total_listed: allItems.length,
-        conversations: allConversations,
+        success_count: allConversations.length,
         failed: failedConversations,
       });
       console.log(
